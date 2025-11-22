@@ -2,13 +2,12 @@ import numpy as np
 from scipy.special import lambertw
 import warnings
 import math
-warnings.filterwarnings("ignore")
 
+warnings.filterwarnings("ignore")
 
 # log shrinkage
 def r(z, Lambda, epsilon):
     return q(Lambda, z, r2(z, epsilon, Lambda), epsilon) - q(Lambda, z, 0, epsilon)
-
 
 def bisection_lg(a, b, Lambda, epsilon):
     for i in range(30):
@@ -21,26 +20,20 @@ def bisection_lg(a, b, Lambda, epsilon):
             break
     return c
 
-
 def r2(x, epsilon, Lambda):
     return 0.5 * (x - epsilon) + np.sqrt(0.25 * (x + epsilon) ** 2 - Lambda)
-
 
 def q(Lambda, z, x, epsilon):
     return (1 / (2 * Lambda)) * (x - z) ** 2 + np.log(1 + abs(x) / epsilon)
 
-
 def z(epsilon, Lambda):
     return bisection_lg(2 * np.sqrt(Lambda) - epsilon, Lambda / epsilon, Lambda, epsilon)
 
-
 def shrinkage_log_soft(x0, epsilon, Lambda):
     x = np.zeros((x0.shape[0], 1))
-
     index1 = abs(x0) > Lambda / epsilon
     x[index1] = np.sign(x0[index1]) * r2(abs(x0[index1]), epsilon, Lambda)
     return x
-
 
 def shrinkage_log_hard(x0, epsilon, Lambda):
     z_ = z(epsilon, Lambda)
@@ -48,7 +41,6 @@ def shrinkage_log_hard(x0, epsilon, Lambda):
     index1 = abs(x0) > z_
     x[index1] = np.sign(x0[index1]) * r2(abs(x0[index1]), epsilon, Lambda)
     return x
-
 
 def shrinkage_log(a_log, Lambda):
     if np.sqrt(Lambda) <= a_log:
@@ -58,47 +50,62 @@ def shrinkage_log(a_log, Lambda):
 
 
 # TL1 shrinkage
-def tau(x0, a, Lambda):  # tl1 shrinkage
-    if Lambda < a / 2:
-        t = a * Lambda / (a + 1)
+def tau(a, Lambda):  # tl1 shrinkage
+    if Lambda <= a**2 / (2 * (a + 1)):
+        t = Lambda * (a + 1) / a
     else:
-        t = (Lambda + a / 2) ** 2 / (2 * (a + 1))
+        t = np.sqrt(2 * Lambda * (a+1))- a / 2
     return t
 
-
 def varphi(x0, a, Lambda):
-    return np.arccos(1 - ((27 * tau(x0, a, Lambda) * a * (a + 1)) / (2 * ((a + abs(x0)) ** 3))))
-
+    return np.arccos(1 - 27 * Lambda * a * (a + 1) / (2 * (a + abs(x0)) ** 3))
 
 def shrinkage_TL1(x0, a, Lambda):
     x = np.zeros((x0.shape[0], 1))
-    index0 = abs(x0) > Lambda
-
+    t= tau(a, Lambda)
+    index0 = abs(x0) > t
+    abs_x0 = abs(x0[index0])
+    varphi_val = varphi(x0[index0], a, Lambda)
     x[index0] = np.sign(x0[index0]) * (
-            (2 / 3) * (a + abs(x0[index0])) * np.cos(varphi(x0[index0], a, Lambda) / 3) - (2 * a) / 3 + abs(
-        x0[index0]) / 3)
+            (2 / 3) * (a + abs_x0) * np.cos(varphi_val / 3) - 2 * a / 3 + abs_x0 / 3)
     return x
 
 
 # scad shrinkage
+#此处nu和a是形状参数，Lambda是临近算子参数
 def shrinkage_scad(x0, a, Lambda):
     x = np.zeros((x0.shape[0], 1))
-    index0 = abs(x0) <= Lambda
-    index1 = np.logical_and(Lambda < abs(x0), abs(x0) <= 2 * Lambda)
-    index2 = np.logical_and(2 * Lambda < abs(x0), abs(x0) <= a * Lambda)
-    index3 = abs(x0) > a * Lambda
-
-    x[index0] = 0
-    x[index1] = np.sign(x0[index1]) * (abs(x0[index1]) - Lambda)
-    x[index2] = ((a - 1) * x0[index2] - np.sign(x0[index2]) * a * Lambda) / (a - 2)
+    nu = 1
+    index1 = np.logical_and(Lambda*nu < np.abs(x0), np.abs(x0) <= nu*(Lambda + 1))
+    index2 = np.logical_and(nu*(Lambda + 1) < np.abs(x0), np.abs(x0) <= a*nu)
+    index3 = np.abs(x0) > a*nu
+    x[index1] = x0[index1] - nu*Lambda*np.sign(x0[index1])
+    x[index2] = ((a-1)*abs(x0[index2]) - a*nu*Lambda)*np.sign(x0[index2])/(a-1-Lambda)
     x[index3] = x0[index3]
+    return x
+
+# # mcp shrinkage
+# def shrinkage_mcp(x0, a, Lambda):
+#     x = np.zeros((x0.shape[0], 1))
+#     index1 = np.logical_and(abs(x0) > Lambda, abs(x0) <= a * Lambda)
+#     index2 = abs(x0) > a * Lambda
+#     x[index1] = np.sign(x0[index1]) * (abs(x0[index1]) - Lambda) / (1 - 1 / a)
+#     x[index2] = x0[index2]
+#     return x
+
+# mcp shrinkage
+def shrinkage_mcp(x0, a, Lambda):
+    x = np.zeros((x0.shape[0], 1))
+    index1 = np.logical_and(abs(x0) > Lambda, abs(x0) <= a)
+    index2 = abs(x0) > a
+    x[index1] = np.sign(x0[index1]) * (abs(x0[index1]) - Lambda) * a / (a - Lambda)
+    x[index2] = x0[index2]
     return x
 
 
 # pie shrinkage
 def P(z, mu_Lambda, sigma):
     return 0.5 + mu_Lambda * ((z / sigma + 1) * np.exp(-z / sigma) - 1) / (z ** 2)
-
 
 def bisection_PiE(a, b, mu_Lambda, sigma):
     for i in range(30):
@@ -111,23 +118,16 @@ def bisection_PiE(a, b, mu_Lambda, sigma):
             break
     return c
 
-
 def PiEProximalbyLambertWThreshold(x, sigma, mu_Lambda):
     n = np.shape(x)[0]
     y = np.zeros((n, 1))
     xstar = bisection_PiE(0, np.sqrt(2 * mu_Lambda), mu_Lambda, sigma)
     Threshold = xstar + mu_Lambda * np.exp(-xstar / sigma)
-
     index = abs(x) > Threshold
-
     z = -(mu_Lambda / sigma ** 2) * np.exp(-abs(x[index]) / sigma)
-
     lamb = lambertw(z, 0).real
-
     y[index] = np.sign(x[index]) * (sigma * lamb + abs(x[index]))
-
     return y
-
 
 def shrinkage_PiE_soft(x0, sigma, mu_Lambda):
     x = np.zeros((np.shape(x0)[0], 1))
@@ -139,89 +139,121 @@ def shrinkage_PiE_soft(x0, sigma, mu_Lambda):
     return x
 
 
-
-# mcp shrinkage
-def shrinkage_mcp(x0, a, Lambda):
+# CL1 shrinkage
+def shrinkage_CaP1(x0, Lambda, nu):
     x = np.zeros((x0.shape[0], 1))
-
-    index1 = np.logical_and(abs(x0) > Lambda, abs(x0) <= a * Lambda)
-    index2 = abs(x0) > a * Lambda
-
-    x[index1] = np.sign(x0[index1]) * (abs(x0[index1]) - Lambda) / (1 - 1 / a)
-    x[index2] = x0[index2]
-
-    return x
-
-
-# cap shrinkage
-def shrinkage_CaP_hard(x0, a, Lambda):
-    x = np.zeros((x0.shape[0], 1))
-    index = abs(x0) > np.sqrt(2 * a * Lambda)
-    x[index] = x0[index]
-    return x
-
-
-def shrinkage_CaP_soft(x0, a, Lambda):
-    x = np.zeros((x0.shape[0], 1))
-    index1 = abs(x0) > a + Lambda / 2
-    index2 = np.logical_and(abs(x0) > Lambda, abs(x0) <= a + Lambda / 2)
-
+    index0 = np.logical_and(nu/Lambda<abs(x0),abs(x0) <= Lambda+nu/(2*Lambda))
+    index1 = abs(x0) > Lambda+nu/(2*Lambda)
+    x[index0] = x0[index0]-np.sign(x0[index0])*nu/Lambda
     x[index1] = x0[index1]
-    x[index2] = np.sign(x0[index2]) * (abs(x0[index2]) - Lambda)
     return x
 
+#CL1/2 shrinkage
+def J(q,nu,Lambda,u,tau):
+    return nu*np.minimum(1.0,np.power(np.abs(u)/Lambda,q)) + 0.5 * (u -tau)**2
 
-def shrinkage_CaP(a_cap, Lambda):
-    if Lambda <= 2 * a_cap:
-        return shrinkage_CaP_soft
-    else:
-        return shrinkage_CaP_hard
+def ProxL1over2(nu, tau):
+    ytilde = np.zeros_like(tau)
+    condition = np.abs(tau) > 1.5 * np.power(nu, 2 / 3)
+    theta = np.arccos((-np.power(3, 3 / 2) / 4) * nu * np.power(abs(tau[condition]), -3 / 2))
+    ytilde[condition] = (2 / 3) * tau[condition] * (1 + np.cos((2 * theta) / 3))
+    return ytilde
 
+def bisection_CL1over2(a,b,q,nu,Lambda):
+    for i in range(20):
+        c=(a+b)/2
+        if (J(q,nu,Lambda,ProxL1over2(nu/Lambda**q,a),a)-nu) * (J(q,nu,Lambda,ProxL1over2(nu/Lambda**q,c),c)-nu)<0:
+            b=c
+        else:
+            a=c
+        if (b-a)<1e-5:
+            break
+    return c
 
-# half shrinkage
-def shrinkage_half(x0, a, Lambda):
+def shrinkage_CaP1over2(x0,Lambda,nu):
+    x = np.zeros((np.shape(x0)[0], 1))
+    cnulambda_1over2 = (3 / 2) * np.power(nu / np.power(Lambda, 1 / 2), 2 / 3)
+    C_nulambda_1over2 = bisection_CL1over2(cnulambda_1over2, Lambda + (1 / 2) * nu / Lambda, 1 / 2, nu, Lambda)
+    index0 = abs(x0) < C_nulambda_1over2
+    index1 = abs(x0) >= C_nulambda_1over2
+    x[index0] = ProxL1over2(nu/np.power(Lambda,1/2),x0[index0])
+    x[index1] = x0[index1]
+    return x
+
+#CL2/3 shrinkage
+def ProxL2over3(nu,tau):
+    ytilde = np.zeros_like(tau)
+    condition = np.abs(tau) > 2*np.power(2*nu/3,3/4)
+    t1 = np.sqrt(tau[condition] ** 4 / 256 - 8 * (nu ** 3) / 729)
+    t = 2 * (np.power(tau[condition] ** 2 / 16 + t1, 1 / 3) + np.power(tau[condition] ** 2 / 16 - t1, 1 / 3))
+    ytilde[condition]=(1/8)*np.sign(tau[condition])*np.power(np.sqrt(t)+np.sqrt(2*np.abs(tau[condition])/np.sqrt(t) -t),3)
+    return ytilde
+
+def bisection_CL2over3(a,b,q,nu,Lambda):
+    for i in range(20):
+        c=(a+b)/2
+        if (J(q,nu,Lambda,ProxL2over3(nu/Lambda**q,a),a)-nu)*(J(q,nu,Lambda,ProxL2over3(nu/Lambda**q,c),c)-nu)<0:
+            b=c
+        else:
+            a=c
+        if (b-a)<1e-5:
+            break
+    return c
+
+def shrinkage_CaP2over3(x0,Lambda,nu):
+    x = np.zeros((np.shape(x0)[0], 1))
+    cnulambda_2over3=2*np.power((2/3)*nu/np.power(Lambda,2/3),3/4)
+    C_nulambda_2over3 = bisection_CL2over3(cnulambda_2over3, Lambda + (2 / 3) * nu / Lambda, 2 / 3, nu, Lambda)
+    index0 = abs(x0) < C_nulambda_2over3
+    index1 = abs(x0) >= C_nulambda_2over3
+    x[index0] = ProxL2over3(nu / np.power(Lambda, 2 / 3), x0[index0])
+    x[index1] = x0[index1]
+    return x
+
+# l1/2 shrinkage
+def shrinkage_l1over2(x0, a, Lambda):
     x = np.zeros((x0.shape[0], 1))
-
-    index = abs(x0) > Lambda
-
-    theta = np.arccos(np.sqrt(2) / 2 * np.power(Lambda / abs(x0[index]), 3 / 2))
-
-    x[index] = (2 / 3) * x0[index] * (1 + np.cos(2 * np.pi / 3 - (2 * theta) / 3))
-
+    threshold = (3 / 2) * np.power(Lambda, 2 / 3)
+    index = abs(x0) > threshold
+    theta = np.arccos(- np.power(3, 3/2) / 4 * Lambda * np.power(abs(x0[index]), -3/2))
+    x[index] = (2 / 3) * x0[index] * (1 + np.cos((2 * theta) / 3))
     return x
 
+# l2/3 shrinkage
+def shrinkage_l2over3(x0,a,Lambda):
+    x = np.zeros((x0.shape[0], 1))
+    threshold = 2 * np.power(2 * Lambda / 3, 3/4)
+    index = abs(x0) > threshold
+    x0_index = x0[index]
+    term1 = np.power(x0_index,2)/16 + np.sqrt(np.power(x0_index,4)/256 - 8*np.power(Lambda,3)/729)
+    term2 = np.power(x0_index,2)/16 - np.sqrt(np.power(x0_index,4)/256 - 8*np.power(Lambda,3)/729)
+    s = np.power(term1,1/3) + np.power(term2,1/3)
+    theta = np.sqrt(2*s) + np.sqrt(2*abs(x0_index) / np.sqrt(2*s) - 2*s)
+    x[index] = np.sign(x0_index)*np.power(theta,3)/8
+    return x
+
+# l1 shrinkage
+def shrinkage_l1(x0, a, Lambda):
+    x = np.zeros((x0.shape[0], 1))
+    index = abs(x0) > Lambda
+    x[index] = np.sign(x0[index]) * (abs(x0[index]) - Lambda)
+    return x
 
 # hard shrinkage
 def shrinkage_hard(x0, a, Lambda):
     x = np.zeros((x0.shape[0], 1))
-
-    index = abs(x0) > Lambda
-
+    index = abs(x0) > np.sqrt(2*Lambda)
     x[index] = x0[index]
-
     return x
 
 
-# soft shrinkage
-def shrinkage_soft(x0, a, Lambda):
-    x = np.zeros((x0.shape[0], 1))
-
-    index = abs(x0) > Lambda
-
-    x[index] = np.sign(x0[index]) * (abs(x0[index]) - Lambda)
-
-    return x
-
-
-
+# l1-l2 shrinkage
 def shrinkage_l1_2(x0, a, Lambda):
-
     infnorm = np.linalg.norm(x0, ord=np.inf) 
     n = np.shape(x0)[0]
     x = np.zeros((n, 1))
-
     if infnorm > Lambda:
-        temp = shrinkage_soft(x0, 0, Lambda)
+        temp = shrinkage_l1(x0, 0, Lambda)
         x = temp * (np.linalg.norm(temp) + a * Lambda) / np.linalg.norm(temp)
     elif infnorm == Lambda:
         index = abs(x0) == Lambda
@@ -229,10 +261,10 @@ def shrinkage_l1_2(x0, a, Lambda):
     elif np.logical_and(infnorm > ((1 - a) * Lambda), infnorm < Lambda):
         index = np.argmax(abs(x0))
         x[index] = np.sign(x0[index]) * (infnorm + (a - 1) * Lambda)
-
     return x
 
 
+# l1/l2 shrinkage
 def getR(rho,qt,nq,t0,maxiter):
     phat = -np.linalg.norm(qt)**2/3
     b = np.sqrt(abs(phat))
