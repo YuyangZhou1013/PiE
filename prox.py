@@ -210,8 +210,8 @@ def shrinkage_CaP2over3(x0,Lambda,nu):
     x[index1] = x0[index1]
     return x
 
-# l1/2 shrinkage
-def shrinkage_l1over2(x0, a, Lambda):
+#half shrinkage
+def  shrinkage_half(x0, a, Lambda):
     x = np.zeros((x0.shape[0], 1))
     threshold = (3 / 2) * np.power(Lambda, 2 / 3)
     index = abs(x0) > threshold
@@ -232,8 +232,8 @@ def shrinkage_l2over3(x0,a,Lambda):
     x[index] = np.sign(x0_index)*np.power(theta,3)/8
     return x
 
-# l1 shrinkage
-def shrinkage_l1(x0, a, Lambda):
+# soft shrinkage
+def shrinkage_soft(x0, a, Lambda):
     x = np.zeros((x0.shape[0], 1))
     index = abs(x0) > Lambda
     x[index] = np.sign(x0[index]) * (abs(x0[index]) - Lambda)
